@@ -66,7 +66,10 @@ def _notify_once(session: Session, review: Review, broker: BrokerClient) -> None
         except IntegrityError:
             session.rollback()
             notification = session.scalar(select(Notification).where(Notification.review_id == review.id, Notification.notification_type == "REVIEW_ESCALATION"))
-    if notification is None or notification.status != "PENDING":
+    # A delivery failure is retried only after an explicit, controlled transition
+    # to RETRY_PENDING.  The unique review/type constraint remains the idempotency
+    # boundary, so this never creates another Telegram alert record.
+    if notification is None or notification.status not in {"PENDING", "RETRY_PENDING"}:
         return
     # Persist IN_FLIGHT before the network call. A worker restart never creates a duplicate alert.
     notification.status = "IN_FLIGHT"
