@@ -40,7 +40,7 @@ def claim_reviews(session: Session, source: SandboxReviewSource, limit: int = 20
 
 def _notification_text(review: Review) -> str:
     return (
-        "Reputation TEST alert\n"
+        "🆕 Новый отзыв — требуется внимание\n"
         f"Риск: {review.risk_level}; тональность: {review.sentiment}\n"
         f"Статус: {review.status}; тема: {review.topic or 'не определена'}\n"
         f"Review: {review.id}"

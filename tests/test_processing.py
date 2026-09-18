@@ -62,6 +62,7 @@ def test_negative_review_notifies_only_once(tmp_path):
         assert notification is not None and notification.status == "SENT"
         assert notification.attempts == 1
     assert len(broker.notifications) == 1
+    assert broker.notifications[0].startswith("🆕 Новый отзыв — требуется внимание\n")
 
 
 def test_controlled_retry_reuses_the_existing_notification(tmp_path):
