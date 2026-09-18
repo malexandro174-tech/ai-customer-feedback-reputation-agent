@@ -1,0 +1,58 @@
+import json
+
+from sqlalchemy import select
+
+from app.database import Base, configure_database, engine, session_scope
+from app.models import Notification, Review
+from app.processor import claim_reviews, process_claimed_review
+from app.sandbox_source import SandboxReviewSource
+
+
+class FakeBroker:
+    def __init__(self):
+        self.notifications = []
+
+    def complete(self, capability, messages, response_json=False):
+        return {"choices": [{"message": {"content": json.dumps({"response_text": "Спасибо за обратную связь, мы всё проверим."})}}]}
+
+    def send_test_notification(self, text):
+        self.notifications.append(text)
+        return {"status": "PASS", "target_registered": True, "message_id": 101}
+
+
+def setup_database(tmp_path):
+    configure_database(f"sqlite+pysqlite:///{tmp_path / 'processing.sqlite'}")
+    Base.metadata.drop_all(engine())
+    Base.metadata.create_all(engine())
+
+
+def test_safe_review_is_processed_once(tmp_path):
+    setup_database(tmp_path)
+    source, broker = SandboxReviewSource(), FakeBroker()
+    with session_scope() as session:
+        review = source.create_review(session, author_name="Ирина", text="Спасибо, всё отлично")
+        review_id = review.id
+        assert claim_reviews(session, source) == [review_id]
+    with session_scope() as session:
+        assert process_claimed_review(session, review_id, source, broker) == "PROCESSED"
+    with session_scope() as session:
+        stored = session.get(Review, review_id)
+        assert stored.status == "PROCESSED"
+        assert stored.response_text
+        assert process_claimed_review(session, review_id, source, broker) == "SKIPPED"
+
+
+def test_negative_review_notifies_only_once(tmp_path):
+    setup_database(tmp_path)
+    source, broker = SandboxReviewSource(), FakeBroker()
+    with session_scope() as session:
+        review = source.create_review(session, author_name="Ирина", text="Ужасный сервис, ничего не работает")
+        review_id = review.id
+        claim_reviews(session, source)
+    with session_scope() as session:
+        assert process_claimed_review(session, review_id, source, broker) == "AWAITING_APPROVAL"
+    with session_scope() as session:
+        notification = session.scalar(select(Notification).where(Notification.review_id == review_id))
+        assert notification is not None and notification.status == "SENT"
+        assert notification.attempts == 1
+    assert len(broker.notifications) == 1

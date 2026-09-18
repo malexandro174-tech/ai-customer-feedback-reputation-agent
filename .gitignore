@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.runtime-venv/
+.env
+runtime-secrets/
+storage/
+*.sqlite*
+?OURSE_?OMEWORK_REPORT.md
+?OMEWORK_TEXT_READY.md
+?OMEWORK_SCREENSHOTS.md
+MAG_OS_REUSE_NOTES.md

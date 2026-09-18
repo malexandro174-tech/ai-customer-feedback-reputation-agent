@@ -1,0 +1,114 @@
+services:
+  review-db:
+    image: postgres:16-alpine
+    container_name: mag-reputation-review-db
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-reputation}
+      POSTGRES_USER: ${DATABASE_USER:-reputation}
+      POSTGRES_PASSWORD_FILE: /run/secrets/feedback_db_password
+    secrets:
+      - feedback_db_password
+    volumes:
+      - reputation_postgres_data:/var/lib/postgresql/data
+    networks:
+      - reputation_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 192m
+    cpus: 0.40
+    security_opt:
+      - no-new-privileges:true
+
+  review-site:
+    build: .
+    image: mag-os/ai-feedback-reputation:1.0.0
+    container_name: mag-ai-feedback-reputation-site
+    environment:
+      APP_ENV: ${APP_ENV:-TEST}
+      ROOT_PATH: ${ROOT_PATH:-/reputation}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://ai.mag-astro.ru/reputation}
+      DATABASE_HOST: review-db
+      DATABASE_NAME: ${DATABASE_NAME:-reputation}
+      DATABASE_USER: ${DATABASE_USER:-reputation}
+      DATABASE_PASSWORD_FILE: /run/secrets/feedback_db_password
+      BROKER_URL: http://mag-access-broker-runtime:8101
+    secrets:
+      - feedback_db_password
+    ports:
+      - "127.0.0.1:8093:8000"
+    depends_on:
+      review-db:
+        condition: service_healthy
+    networks:
+      - reputation_internal
+      - broker_internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; import sys; sys.exit(0 if urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    mem_limit: 192m
+    cpus: 0.35
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  feedback-worker:
+    image: mag-os/ai-feedback-reputation:1.0.0
+    container_name: mag-ai-feedback-reputation-worker
+    command: ["python", "-m", "app.worker"]
+    environment:
+      APP_ENV: ${APP_ENV:-TEST}
+      DATABASE_HOST: review-db
+      DATABASE_NAME: ${DATABASE_NAME:-reputation}
+      DATABASE_USER: ${DATABASE_USER:-reputation}
+      DATABASE_PASSWORD_FILE: /run/secrets/feedback_db_password
+      BROKER_URL: http://mag-access-broker-runtime:8101
+      WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-15}
+    secrets:
+      - feedback_db_password
+    depends_on:
+      review-db:
+        condition: service_healthy
+      review-site:
+        condition: service_healthy
+    networks:
+      - reputation_internal
+      - broker_internal
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker", "--health"]
+      interval: 25s
+      timeout: 6s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    mem_limit: 160m
+    cpus: 0.30
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  reputation_postgres_data:
+
+secrets:
+  feedback_db_password:
+    file: ./runtime-secrets/feedback_db_password
+
+networks:
+  reputation_internal:
+    internal: true
+  broker_internal:
+    external: true
+    name: mag_broker_internal

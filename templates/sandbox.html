@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Customer Feedback &amp; Reputation Agent</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='sandbox.css').path }}">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div><p class="eyebrow">REPUTATION INTELLIGENCE · {{ environment }}</p><h1>AI Customer Feedback &amp; Reputation Agent</h1><p class="lede">Безопасный sandbox для сбора обратной связи, оценки тональности и подготовки ответов.</p></div>
+      <a class="operator-link" href="{{ url_for('operator').path }}">Операторская сводка →</a>
+    </header>
+    {% if notice %}<div class="notice">Отзыв принят в очередь. Фоновый worker обработает его в ближайшем цикле.</div>{% endif %}
+    <section class="grid">
+      <form class="card form-card" method="post" action="{{ url_for('create_review').path }}">
+        <p class="eyebrow">SANDBOX REVIEW SOURCE</p><h2>Новый отзыв</h2>
+        <label>Автор<input name="author_name" required minlength="2" maxlength="160" placeholder="Например, Марина"></label>
+        <label>Текст отзыва<textarea name="text" required minlength="3" maxlength="5000" placeholder="Опишите клиентский опыт…"></textarea></label>
+        <button type="submit">Отправить на анализ</button>
+        <p class="hint">Публикуются только ответы с режимом AUTO_SAFE. Остальные направляются оператору.</p>
+      </form>
+      <aside class="card pulse"><p class="eyebrow">PROCESSING STATUS</p><h2>{% if latest_run %}{{ latest_run.status }}{% else %}ОЖИДАЕТ ПЕРВЫЙ ЦИКЛ{% endif %}</h2><dl><div><dt>Источник</dt><dd>SandboxReviewSource</dd></div><div><dt>Worker</dt><dd>Отдельный защищённый сервис</dd></div><div><dt>Уведомления</dt><dd>Только разрешённый TEST target</dd></div></dl></aside>
+    </section>
+    <section class="reviews"><div class="section-heading"><div><p class="eyebrow">LIVE QUEUE</p><h2>Отзывы и решения</h2></div><span>{{ reviews|length }} записей</span></div>
+      {% for review in reviews %}
+      <article class="review-card">
+        <div class="review-head"><strong>{{ review.author_name }}</strong><span class="badge status-{{ review.status|lower }}">{{ review.status }}</span></div>
+        <p class="review-text">{{ review.text }}</p>
+        <div class="tags"><span>{{ review.sentiment }}</span><span>Риск: {{ review.risk_level }}</span>{% if review.topic %}<span>{{ review.topic }}</span>{% endif %}</div>
+        {% if review.response_text %}<div class="answer"><small>{% if review.response_mode == 'AUTO_SAFE' %}Автоматически опубликованный ответ{% else %}Черновик для согласования{% endif %}</small><p>{{ review.response_text }}</p></div>{% elif review.response_mode == 'BLOCKED' %}<div class="answer blocked"><small>Ответ заблокирован</small><p>Обращение эскалировано оператору из-за критического риска.</p></div>{% endif %}
+      </article>
+      {% else %}<div class="empty">Добавьте первый sandbox-отзыв — он появится здесь после сохранения.</div>{% endfor %}
+    </section>
+  </main>
+</body>
+</html>
